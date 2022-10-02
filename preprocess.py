@@ -6,7 +6,7 @@ from os.path import splitext, basename
 from pathlib import Path
 import pickle
 import numpy as np
-from typing import Union
+from typing import Union, Dict
 from utils import hparams as hp
 from utils.display import *
 from utils.dsp import *
@@ -15,8 +15,9 @@ from utils.paths import Paths
 from utils.display import simple_table
 from functools import partial
 
-from 臺灣言語工具.解析整理.拆文分析器 import 拆文分析器
-from 臺灣言語工具.語音合成 import 台灣話口語講法
+from 臺灣言語工具.解析整理.拆文分析器 import 拆文分析器 as ParsingAnalyzer
+ParsingAnalyzer.SentBuilder = ParsingAnalyzer.建立句物件
+from 臺灣言語工具.語音合成 import 台灣話口語講法 as TaiwaneseSpokenForm
 
 
 def valid_n_workers(num):
@@ -65,27 +66,21 @@ class Preprocessor():
         hp.configure(self.args.hp_file)
 
     # === Dataset === #
-    def suisiann(self, path: Union[str, Path], wav_files):
-        csv_file = get_files(path, extension='.csv')
-
-        assert len(csv_file) == 1
-
-        u_tihleh = set()
-        for sootsai in wav_files:
-            u_tihleh.add(basename(sootsai))
+    def suisiann(self, path: Union[str, Path], wav_files) -> Dict[Union[str, Path], TaiwaneseSpokenForm]:
+        [csv_file] = get_files(path, extension='.csv')
+        wav_fnames = {basename(fpath) for fpath in wav_files}
+            
         text_dict = {}
-
-        with open(csv_file[0], encoding='utf-8') as f:
-            for tsua in DictReader(f):
-                mia = basename(tsua['音檔'])
-                if mia in u_tihleh:
-                    imtong = splitext(mia)[0]
-                    hj = tsua['漢字']
-                    lmj = tsua['羅馬字']
-                    text = 台灣話口語講法(
-                        拆文分析器.建立句物件(hj, lmj)
+        with open(csv_file, encoding='utf-8') as f:
+            for datapoint in DictReader(f):
+                full_fname = basename(datapoint['音檔'])
+                if full_fname in wav_fnames:
+                    wavfile_name, *_ = splitext(full_fname)
+                    hanji, romaji = datapoint['漢字'], datapoint['羅馬字']
+                    text = TaiwaneseSpokenForm(
+                        ParsingAnalyzer.SentBuilder(hanji, romaji)
                     )
-                    text_dict[imtong] = text
+                    text_dict[wavfile_name] = text
 
         return text_dict
 
